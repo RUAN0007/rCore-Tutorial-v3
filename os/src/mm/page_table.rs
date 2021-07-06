@@ -150,6 +150,10 @@ impl PageTable {
 }
 
 pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&'static mut [u8]> {
+    may_translated_byte_buffer(token, ptr, len).unwrap()
+}
+
+pub fn may_translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Option<Vec<&'static mut [u8]>> {
     let page_table = PageTable::from_token(token);
     let mut start = ptr as usize;
     let end = start + len;
@@ -157,10 +161,13 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     while start < end {
         let start_va = VirtAddr::from(start);
         let mut vpn = start_va.floor();
-        let ppn = page_table
-            .translate(vpn)
-            .unwrap()
-            .ppn();
+        let mut ppn : PhysPageNum;
+        if let Some(page_table_entry) = page_table.translate(vpn) {
+            ppn = page_table_entry.ppn();
+        } else {
+            return None;
+        }
+
         vpn.step();
         let mut end_va: VirtAddr = vpn.into();
         end_va = end_va.min(VirtAddr::from(end));
@@ -171,7 +178,7 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         }
         start = end_va.into();
     }
-    v
+    Some(v)
 }
 
 pub fn translated_str(token: usize, ptr: *const u8) -> String {
@@ -191,9 +198,13 @@ pub fn translated_str(token: usize, ptr: *const u8) -> String {
 }
 
 pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> &'static mut T {
+    may_translated_refmut(token, ptr).unwrap()
+}
+
+pub fn may_translated_refmut<T>(token: usize, ptr: *mut T) -> Option<&'static mut T> {
     let page_table = PageTable::from_token(token);
     let va = ptr as usize;
-    page_table.translate_va(VirtAddr::from(va)).unwrap().get_mut()
+    page_table.translate_va(VirtAddr::from(va)).map(|v|{v.get_mut()})
 }
 
 pub struct UserBuffer {

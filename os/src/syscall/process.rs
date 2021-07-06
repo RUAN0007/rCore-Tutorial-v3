@@ -5,7 +5,7 @@ use crate::task::{
     current_user_token,
     add_task,
 };
-use crate::timer::get_time_ms;
+use crate::timer::{get_time_ms, get_time_us, USEC_PER_SEC};
 use crate::mm::{
     translated_str,
     translated_refmut,
@@ -23,9 +23,19 @@ pub fn sys_yield() -> isize {
     0
 }
 
-pub fn sys_get_time() -> isize {
-    get_time_ms() as isize
+pub fn sys_get_time(timer_val_ptr : *const u8) -> isize {
+    let now_us : usize = get_time_us();
+    let now_s = now_us / USEC_PER_SEC;
+    let now_only_us = now_us % USEC_PER_SEC;
+    let translated : *mut usize = translated_refmut(current_user_token(), timer_val_ptr as *mut usize);
+
+    unsafe{
+        *(translated) = now_s;
+        *((translated as usize + core::mem::size_of::<usize>()) as *mut usize) = now_only_us;
+    }
+    0
 }
+
 
 pub fn sys_getpid() -> isize {
     current_task().unwrap().pid.0 as isize

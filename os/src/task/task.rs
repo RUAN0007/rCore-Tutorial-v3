@@ -1,13 +1,13 @@
 use crate::mm::{MemorySet, PhysPageNum, KERNEL_SPACE, VirtAddr};
 use crate::trap::{TrapContext, trap_handler};
-use crate::config::{TRAP_CONTEXT};
+use crate::config::{TRAP_CONTEXT, MAIL_FD};
 use super::TaskContext;
 use super::{PidHandle, pid_alloc, KernelStack};
 use alloc::sync::{Weak, Arc};
 use alloc::vec;
 use alloc::vec::Vec;
 use spin::{Mutex, MutexGuard};
-use crate::fs::{File, Stdin, Stdout};
+use crate::fs::{File, Stdin, Stdout, Mails};
 
 pub struct TaskControlBlock {
     // immutable
@@ -92,6 +92,8 @@ impl TaskControlBlock {
                     Some(Arc::new(Stdout)),
                     // 2 -> stderr
                     Some(Arc::new(Stdout)),
+                    // 3 -> mails
+                    Some(Arc::new(Mails::new()))
                 ],
             }),
         };
@@ -157,6 +159,8 @@ impl TaskControlBlock {
                 new_fd_table.push(None);
             }
         }
+        // each process has a unique mail
+        new_fd_table[MAIL_FD] = Some(Arc::new(Mails::new()));
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
