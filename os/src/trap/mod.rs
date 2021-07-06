@@ -18,6 +18,7 @@ use crate::task::{
     suspend_current_and_run_next,
 };
 use crate::timer::set_next_trigger;
+use crate::timer::get_time_ms;
 
 global_asm!(include_str!("trap.S"));
 
@@ -52,7 +53,11 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
-            suspend_current_and_run_next();
+            if get_time_ms() > 20000 {
+                exit_current_and_run_next();
+            } else {
+                suspend_current_and_run_next();
+            }
         }
         _ => {
             panic!("Unsupported trap {:?}, stval = {:#x}!", scause.cause(), stval);

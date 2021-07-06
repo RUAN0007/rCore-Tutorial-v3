@@ -1,6 +1,7 @@
 pub struct TaskControlBlock {
     pub task_cx_ptr: usize,
     pub task_status: TaskStatus,
+    pub task_stride : usize,
 }
 
 impl TaskControlBlock {
