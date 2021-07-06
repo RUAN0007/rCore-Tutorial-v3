@@ -8,6 +8,8 @@ use riscv::register::satp;
 use alloc::sync::Arc;
 use lazy_static::*;
 use spin::Mutex;
+
+
 use crate::config::{
     MEMORY_END,
     PAGE_SIZE,
@@ -50,6 +52,93 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
+
+    pub fn mapped(&self, addr : *const u8) -> bool {
+        let vpn : VirtPageNum = VirtAddr::from(addr as usize).into();
+        self.page_table.find_pte(vpn).is_some()
+    }
+
+    pub fn check_and_map(&mut self, start : *const u8, len : usize, port : usize) -> isize {
+        let start_va : VirtAddr = VirtAddr::from(start as usize);
+        let end_va : VirtAddr = VirtAddr::from(start as usize + len);
+        let start_vpn : VirtPageNum = start_va.into();
+        let end_vpn : VirtPageNum = end_va.into();
+
+        for map_area in self.areas.iter() {
+           let mapped_start_vpn : VirtPageNum = map_area.vpn_range.get_start();
+           let mapped_end_vpn : VirtPageNum = map_area.vpn_range.get_end();
+
+           let mut max_start : VirtPageNum = mapped_start_vpn;
+           if start_vpn > max_start { max_start = start_vpn; }
+
+           let mut min_end : VirtPageNum = mapped_end_vpn;
+           if end_vpn < min_end {min_end = end_vpn}
+
+           if max_start < min_end {
+               println!("Detect overlap between [{:?}..{:?}] and [{:?}..{:?}]", start_vpn, end_vpn, mapped_start_vpn, mapped_end_vpn);
+               return -1;
+           }
+        }
+
+        let mut perm : MapPermission = MapPermission::empty();
+        perm |= MapPermission::U;
+        if port & 0b0001 != 0 { perm |= MapPermission::R; }
+        if port & 0b0010 != 0 { perm |= MapPermission::W; }
+        if port & 0b0100 != 0 { perm |= MapPermission::X; }
+
+        // println!("insert_framed_area {:?}, {:?}, perm={:?}", start_va, end_va, perm);
+        self.insert_framed_area(start_va, end_va, perm);
+        len as isize
+    }
+
+    pub fn check_and_unmap(&mut self, start : *const u8, len : usize) -> isize {
+        let start_va : VirtAddr = VirtAddr::from(start as usize);
+        let end_va : VirtAddr = VirtAddr::from(start as usize + len);
+        let start_vpn : VirtPageNum = start_va.into();
+        let end_vpn : VirtPageNum = end_va.into();
+
+        // TODO: operate on the VPN ranges instead of each VPN 
+        for vpn in VPNRange::new(start_vpn, end_vpn) {
+            let mut mapped : bool = false;
+            for map_area in self.areas.iter() {
+                let mapped_start_vpn : VirtPageNum = map_area.vpn_range.get_start();
+                let mapped_end_vpn : VirtPageNum = map_area.vpn_range.get_end();
+                if mapped_start_vpn <= vpn && vpn < mapped_end_vpn {
+                    mapped = true;
+                    break;
+                }
+            }
+            if !mapped {
+                println!("Unmapped VPN {:?}", vpn);
+                return -1;
+            }
+        }
+
+        let mut affected_area_indices : Vec<usize> = Vec::new();
+        for (i, map_area) in self.areas.iter().enumerate() {
+            let mapped_start_vpn : VirtPageNum = map_area.vpn_range.get_start();
+            let mapped_end_vpn : VirtPageNum = map_area.vpn_range.get_end();
+
+            let mut max_start : VirtPageNum = mapped_start_vpn;
+            if start_vpn > max_start { max_start = start_vpn; }
+
+            let mut min_end : VirtPageNum = mapped_end_vpn;
+            if end_vpn < min_end {min_end = end_vpn}
+
+            if max_start < min_end {
+                // overlapped
+                affected_area_indices.push(i);
+            }
+        }
+
+        for affected_area_idx in affected_area_indices.into_iter().rev() {
+            self.areas[affected_area_idx].unmap(&mut self.page_table);
+            self.areas.remove(affected_area_idx);
+        }
+
+        len as isize
+    }
+
     /// Assume that no conflicts.
     pub fn insert_framed_area(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
         self.push(MapArea::new(
@@ -179,6 +268,7 @@ impl MemorySet {
         (memory_set, user_stack_top, elf.header.pt2.entry_point() as usize)
     }
     pub fn activate(&self) {
+        println!("[kernel] Activate");
         let satp = self.page_table.token();
         unsafe {
             satp::write(satp);

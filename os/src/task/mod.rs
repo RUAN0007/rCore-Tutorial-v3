@@ -111,6 +111,19 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+
+    }
+
+    pub fn current_mmap(&self, start : *const u8, len : usize, port : usize) -> isize {
+        let mut inner = self.inner.borrow_mut();
+        let current = inner.current_task;
+        inner.tasks[current].check_and_map(start, len, port)
+    }
+
+    pub fn current_unmmap(&self, start : *const u8, len : usize) -> isize {
+        let mut inner = self.inner.borrow_mut();
+        let current = inner.current_task;
+        inner.tasks[current].check_and_unmap(start, len)
     }
 }
 
@@ -146,4 +159,12 @@ pub fn current_user_token() -> usize {
 
 pub fn current_trap_cx() -> &'static mut TrapContext {
     TASK_MANAGER.get_current_trap_cx()
+}
+
+pub fn current_mmap(start : *const u8, len : usize, port : usize) -> isize {
+    TASK_MANAGER.current_mmap(start, len, port)
+}
+
+pub fn current_unmmap(start : *const u8, len : usize) -> isize {
+    TASK_MANAGER.current_unmmap(start, len)
 }

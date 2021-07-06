@@ -58,6 +58,15 @@ impl TaskControlBlock {
         );
         task_control_block
     }
+
+    pub fn check_and_map(&mut self, start : *const u8, len : usize, port : usize) -> isize {
+        self.memory_set.check_and_map(start, len, port)
+    }
+
+
+    pub fn check_and_unmap(&mut self, start : *const u8, len : usize) -> isize {
+        self.memory_set.check_and_unmap(start, len)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
