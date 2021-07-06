@@ -8,7 +8,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 const EFS_MAGIC: u32 = 0x3b800001;
-const INODE_DIRECT_COUNT: usize = 28;
+const INODE_DIRECT_COUNT: usize = 27;
 const NAME_LENGTH_LIMIT: usize = 27;
 const INODE_INDIRECT1_COUNT: usize = BLOCK_SZ / 4;
 const INODE_INDIRECT2_COUNT: usize = INODE_INDIRECT1_COUNT * INODE_INDIRECT1_COUNT;
@@ -74,6 +74,7 @@ type DataBlock = [u8; BLOCK_SZ];
 #[repr(C)]
 pub struct DiskInode {
     pub size: u32,
+    pub link_count : u32,
     pub direct: [u32; INODE_DIRECT_COUNT],
     pub indirect1: u32,
     pub indirect2: u32,
@@ -84,11 +85,27 @@ impl DiskInode {
     /// indirect1 and indirect2 block are allocated only when they are needed.
     pub fn initialize(&mut self, type_: DiskInodeType) {
         self.size = 0;
+        self.link_count = 1;
         self.direct.iter_mut().for_each(|v| *v = 0);
         self.indirect1 = 0;
         self.indirect2 = 0;
         self.type_ = type_;
     }
+    
+    pub fn get_link_count(&self) -> u32 {
+        self.link_count
+    }
+
+    pub fn incr_link_count(&mut self) -> u32 {
+        self.link_count += 1;
+        self.link_count
+    }
+
+    pub fn decr_link_count(&mut self) -> u32 {
+        self.link_count -= 1;
+        self.link_count
+    }
+
     pub fn is_dir(&self) -> bool {
         self.type_ == DiskInodeType::Directory
     }

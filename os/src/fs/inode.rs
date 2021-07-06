@@ -8,7 +8,7 @@ use lazy_static::*;
 use bitflags::*;
 use alloc::vec::Vec;
 use spin::Mutex;
-use super::File;
+use super::{File,Stat,StatMode};
 use crate::mm::UserBuffer;
 
 pub struct OSInode {
@@ -92,6 +92,14 @@ impl OpenFlags {
     }
 }
 
+pub fn linkat(old_path: &str, new_path: &str, _flags: OpenFlags) -> bool {
+    ROOT_INODE.linkat(old_path, new_path)
+}
+
+pub fn unlinkat(path: &str) -> bool {
+    ROOT_INODE.unlinkat(path)
+}
+
 pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     let (readable, writable) = flags.read_write();
     if flags.contains(OpenFlags::CREATE) {
@@ -156,4 +164,16 @@ impl File for OSInode {
         }
         total_write_size
     }
+
+    fn stat(&self) -> Stat { 
+        let inner = self.inner.lock();
+        let (inode_num, is_dir, hard_link_count) = inner.inode.stat();
+        let mut s= Stat::new();
+        s.dev = 1; // useless
+        s.ino = inode_num;
+        s.mode = if is_dir {StatMode::DIR} else {StatMode::FILE};
+        s.nlink = hard_link_count;
+        s
+    }
+
 }

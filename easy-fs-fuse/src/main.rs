@@ -94,6 +94,7 @@ fn easy_fs_pack() -> std::io::Result<()> {
 
 #[test]
 fn efs_test() -> std::io::Result<()> {
+    // assert_eq!(1,2);
     let block_file = Arc::new(BlockFile(Mutex::new({
         let f = OpenOptions::new()
             .read(true)
@@ -125,6 +126,26 @@ fn efs_test() -> std::io::Result<()> {
         greet_str,
         core::str::from_utf8(&buffer[..len]).unwrap(),
     );
+
+
+    // old file not exists
+    assert!(!root_inode.linkat("filec", "filed"));
+    assert!(!root_inode.linkat("filea", "filea"));
+
+    assert!(root_inode.linkat("filea", "filec"));
+    let (inode_num_a, file_mode, hard_link_count) = filea.stat();
+    assert_eq!(file_mode, 0o100000);
+    assert_eq!(hard_link_count, 2);
+
+    let filec = root_inode.find("filec").unwrap();
+    let (inode_num_c, file_mode, hard_link_count) = filec.stat();
+    assert_eq!(file_mode, 0o100000);
+    assert_eq!(hard_link_count, 2);
+    assert_eq!(inode_num_a, inode_num_c);
+
+    assert!(root_inode.unlinkat("filec"));
+    assert_eq!(filea.stat().2, 1);
+
 
     let mut random_str_test = |len: usize| {
         filea.clear();

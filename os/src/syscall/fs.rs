@@ -5,7 +5,7 @@ use crate::mm::{
     translated_str,
 };
 use crate::task::{current_user_token, current_task};
-use crate::fs::{make_pipe, OpenFlags, open_file};
+use crate::fs::{make_pipe, OpenFlags, open_file, linkat, unlinkat, Stat};
 use alloc::sync::Arc;
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
@@ -52,7 +52,7 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
     }
 }
 
-pub fn sys_open(path: *const u8, flags: u32) -> isize {
+pub fn sys_open(_dirfd: usize, path: *const u8, flags: u32, _mode : u32) -> isize {
     let task = current_task().unwrap();
     let token = current_user_token();
     let path = translated_str(token, path);
@@ -67,6 +67,37 @@ pub fn sys_open(path: *const u8, flags: u32) -> isize {
     } else {
         -1
     }
+}
+
+pub fn sys_unlinkat(dirfd: i32, path: *const u8, flags: u32) -> isize {
+    let task = current_task().unwrap();
+    let token = current_user_token();
+    let path = translated_str(token, path);
+    if unlinkat(path.as_str()) { 0 } else { -1 }
+}
+
+pub fn sys_linkat(_olddirfd: i32, old_path: *const u8, _newdirfd: i32, new_path: *const u8, flags: u32) -> isize {
+    let flags = OpenFlags::from_bits(flags).unwrap();
+    let task = current_task().unwrap();
+    let token = current_user_token();
+    let old_path = translated_str(token, old_path);
+    let new_path = translated_str(token, new_path);
+
+    if linkat(old_path.as_str(), new_path.as_str(), flags) { 0 } else { -1 }
+}
+
+pub fn sys_fstat(fd: usize, st: *const u8) -> isize {
+    let token = current_user_token();
+    let task = current_task().unwrap();
+    let mut inner = task.acquire_inner_lock();
+    if fd >= inner.fd_table.len() {
+        return -1;
+    }
+    if inner.fd_table[fd].is_none() {
+        return -1;
+    }
+    *translated_refmut(token, st as *mut Stat) = inner.fd_table[fd].as_ref().unwrap().stat(); 
+    0
 }
 
 pub fn sys_close(fd: usize) -> isize {

@@ -155,6 +155,85 @@ impl Inode {
         // release efs lock automatically by compiler
     }
 
+
+    pub fn linkat(&self, old_name: &str, new_name : &str) -> bool {
+        if old_name == new_name {return false;}
+
+        let mut fs = self.fs.lock();
+        if let Some(old_inode_id) = self.read_disk_inode(|root_inode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            self.find_inode_id(old_name, root_inode)
+        }) {
+            let (block_id, block_offset) = fs.get_disk_inode_pos(old_inode_id);
+            get_block_cache(
+                block_id as usize,
+                Arc::clone(&self.block_device)
+            ).lock().modify(block_offset, |new_inode: &mut DiskInode| {
+                new_inode.incr_link_count();
+            });
+
+            // assume new_name does not exist. 
+            self.modify_disk_inode(|root_inode| {
+                // append file in the dirent
+                let file_count = (root_inode.size as usize) / DIRENT_SZ;
+                let new_size = (file_count + 1) * DIRENT_SZ;
+                // increase size
+                self.increase_size(new_size as u32, root_inode, &mut fs);
+                // write dirent
+                let dirent = DirEntry::new(new_name, old_inode_id);
+                root_inode.write_at(
+                    file_count * DIRENT_SZ,
+                    dirent.as_bytes(),
+                    &self.block_device,
+                );
+            });
+
+            true
+        } else {
+           false 
+        }
+
+    }
+
+    pub fn unlinkat(&self, name: &str) -> bool {
+        let fs = self.fs.lock();
+        if let Some(inode_id) = self.read_disk_inode(|root_inode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            self.find_inode_id(name, root_inode)
+        }) {
+            let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
+            get_block_cache(
+                block_id as usize,
+                Arc::clone(&self.block_device)
+            ).lock().modify(block_offset, |new_inode: &mut DiskInode| {
+                new_inode.decr_link_count();
+            });
+
+            // As the assignment said, no need to remove the corresponding direntry
+            true
+        } else {
+            false 
+        }
+    }
+
+    // (inode_num, is_dir, hard_link_count)
+    pub fn stat(&self) -> (u64, bool, u32) {
+        let fs = self.fs.lock();
+
+        let inode_num : u64= fs.get_inode_id(self.block_id as u32, self.block_offset) as u64;
+        let mut file_mode : bool = false;
+        let mut link_count : u32 = 0;
+        self.read_disk_inode(|disk_inode| {
+            file_mode = disk_inode.is_dir();
+            link_count = disk_inode.get_link_count();
+        });
+        (inode_num, file_mode, link_count)
+    }
+
     pub fn ls(&self) -> Vec<String> {
         let _fs = self.fs.lock();
         self.read_disk_inode(|disk_inode| {
